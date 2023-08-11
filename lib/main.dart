@@ -36,7 +36,11 @@ class _CurlToDartConverterState extends State<CurlToDartConverter> {
     // Example: -X POST -> POST
     final RegExp methodRegex = RegExp(r"-X ([A-Z]+)");
     final match = methodRegex.firstMatch(curlCommand);
-    return match?.group(1)?.toUpperCase() ?? 'GET';
+    final value = match?.group(1)?.toUpperCase() ?? 'GET';
+    if (value == "GET" && curlCommand.contains("--data-raw '{")) {
+      return "POST";
+    }
+    return value;
   }
 
   String capitalizeFirstLetter(String input) {
@@ -165,8 +169,8 @@ Future<ResponseModel> ${lowercaseFirstLetter(className)}(BuildContext? context${
       try {
         String resultCode = generatedCode + modelString;
         if (modelString.isNotEmpty) {
-          resultCode = resultCode.replaceAll('return ResponseModel.fromSuccess(rep);',
-              '''
+          resultCode = resultCode
+              .replaceAll('return ResponseModel.fromSuccess(rep);', '''
     $classNameOfEntity entity = $classNameOfEntity.fromJson(rep);
     return ResponseModel.fromSuccess(entity);''');
         }
