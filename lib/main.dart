@@ -1,5 +1,8 @@
+import 'dart:convert';
+
 import 'package:dart_style/dart_style.dart';
 import 'package:flutter/material.dart';
+import 'package:uri/uri.dart';
 
 void main() {
   runApp(MyApp());
@@ -47,20 +50,20 @@ class _CurlToDartConverterState extends State<CurlToDartConverter> {
     return input[0].toLowerCase() + input.substring(1);
   }
 
-  String _generateClassName(String baseUrl, String methodLowerStr) {
-    Uri uri = Uri.parse(baseUrl);
-
-    // Define a regular expression pattern to match the desired part
-    RegExp regex = RegExp(r'/([^/]+)/([^/]+)/([^/]+)/([^/]+)$');
-
-    RegExpMatch regExpMatch = regex.firstMatch(uri.path)!;
-
-    // Use the first capturing group from the matched result
-    String extractedPart =
-        "${capitalizeFirstLetter(regExpMatch.group(2)!)}${capitalizeFirstLetter(regExpMatch.group(3)!)}";
-
-    return capitalizeFirstLetter(methodLowerStr) + extractedPart;
-  }
+  // String _generateClassName(String baseUrl, String methodLowerStr) {
+  //   Uri uri = Uri.parse(baseUrl);
+  //
+  //   // Define a regular expression pattern to match the desired part
+  //   RegExp regex = RegExp(r'/([^/]+)/([^/]+)/([^/]+)/([^/]+)$');
+  //
+  //   RegExpMatch regExpMatch = regex.firstMatch(uri.path)!;
+  //
+  //   // Use the first capturing group from the matched result
+  //   String extractedPart =
+  //       "${capitalizeFirstLetter(regExpMatch.group(2)!)}${capitalizeFirstLetter(regExpMatch.group(3)!)}";
+  //
+  //   return capitalizeFirstLetter(methodLowerStr) + extractedPart;
+  // }
 
   bool pathContainsParam(String path) {
     RegExp paramPattern = RegExp(
@@ -73,6 +76,17 @@ class _CurlToDartConverterState extends State<CurlToDartConverter> {
         r'/([a-f\d-]+)$'); // Match and capture UUID-like strings at the end of the path
     Match? match = paramPattern.firstMatch(path);
     return match?.group(1) ?? 'No param found';
+  }
+
+  Map<String, dynamic> extractQueryParams(String url) {
+    Uri uri = Uri.parse(url);
+    Map<String, dynamic> queryParams = {};
+
+    uri.queryParameters.forEach((key, value) {
+      queryParams[key] = value;
+    });
+
+    return queryParams;
   }
 
   void convertToDartCode() {
@@ -88,41 +102,57 @@ class _CurlToDartConverterState extends State<CurlToDartConverter> {
     final String baseUrl = urlMatch.group(1)!;
     final String methodLowerStr = _getRequestMethod().toLowerCase();
 
-    final String className = _generateClassName(baseUrl, methodLowerStr);
     Uri uri = Uri.parse(baseUrl);
     String path = uri.path;
+    final pathSplit = path.split('/');
+    final String className =
+        "${capitalizeFirstLetter(pathSplit[pathSplit.length - 2])}${capitalizeFirstLetter(pathSplit.last)}";
 
     final bool paramFromPath = pathContainsParam(path);
     if (paramFromPath) {
       path = "${path.replaceAll(extractParamValueFromPath(path), "")}\$id";
     }
 
-    final Map<String, dynamic> data = {};
+    // final Map<String, dynamic> data = {};
 
-    print("data::${data.toString()}");
+    print("curlCommand::$curlCommand");
 
-    dataRegex.allMatches(curlCommand).forEach((match) {
-      data['data'] = match.group(1)!;
-    });
+    // dataRegex.allMatches(curlCommand).forEach((match) {
+    //   data['data'] = match.group(1)!;
+    // });
+
+    Map<String, dynamic> queryParams = extractQueryParams(baseUrl);
+
+    print('baseUrl : $baseUrl');
+    print('queryParams : $queryParams');
+    // print("data::${data.toString()}");
+
     final String requestModelName = '${className}RequestModel';
 
     final String generatedCode = '''
 class $requestModelName extends BaseRequest {
   ${paramFromPath ? "final String id;" : ""}
+  ${queryParams.isNotEmpty ? queryParams.keys.map((e) {
+              return "final String $e;";
+            }).toList().join('') : ""}
 
-  $requestModelName(${paramFromPath ? "this.id," : ""});
+  $requestModelName(${paramFromPath ? "this.id," : ""}${queryParams.isNotEmpty ? queryParams.keys.map((e) {
+              return "this.$e,";
+            }).toList().join('') : ""});
   
   @override
-  String url() => '$path';${data.isEmpty ? "" : """
+  String url() => '$path';${queryParams.isEmpty ? "" : """
   
   @override
   Map<String, dynamic> toJson() {
-    return {}; 
+    return ${queryParams.isNotEmpty ? "{${queryParams.keys.map((e) => '"$e": this.$e,').join('')}}" : "{}"}; 
   }"""}
 }
 
-Future<ResponseModel> ${lowercaseFirstLetter(className)}(BuildContext? context,{${paramFromPath ? "required final String id," : ""}}) async {
-  return $requestModelName(${paramFromPath?"id":""}).sendApiAction(context, reqType: ReqType.$methodLowerStr)
+Future<ResponseModel> ${lowercaseFirstLetter(className)}(BuildContext? context,{${paramFromPath ? "required final String id," : ""}
+${queryParams.isNotEmpty ? queryParams.keys.map((e) => 'required final ${queryParams[e].runtimeType} $e,').join('') : ""}}) async {
+  return $requestModelName(${paramFromPath ? "id" : ""}
+  ${queryParams.isNotEmpty ? queryParams.keys.map((e) => '$e,').join('') : ""}).sendApiAction(context, reqType: ReqType.$methodLowerStr)
       .then((rep) {
     // Parse the response using appropriate logic
     // Replace with your code to handle the response
@@ -137,7 +167,11 @@ Future<ResponseModel> ${lowercaseFirstLetter(className)}(BuildContext? context,{
 
     DartFormatter formatter = DartFormatter();
     setState(() {
-      generatedDartCode = formatter.format(generatedCode);
+      try {
+        generatedDartCode = formatter.format(generatedCode);
+      } catch (e) {
+        generatedDartCode = generatedCode;
+      }
     });
   }
 
