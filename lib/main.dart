@@ -129,6 +129,10 @@ class _CurlToDartConverterState extends State<CurlToDartConverter> {
 
     final String requestModelName = '${className}RequestModel';
 
+    final methodRecieve =
+        ''',{${paramFromPath ? "required final String id," : ""}
+${queryParams.isNotEmpty ? queryParams.keys.map((e) => 'required final ${queryParams[e].runtimeType} $e,').join('') : ""}}''';
+
     final String generatedCode = '''
 class $requestModelName extends BaseRequest {
   ${paramFromPath ? "final String id;" : ""}
@@ -149,8 +153,7 @@ class $requestModelName extends BaseRequest {
   }"""}
 }
 
-Future<ResponseModel> ${lowercaseFirstLetter(className)}(BuildContext? context,{${paramFromPath ? "required final String id," : ""}
-${queryParams.isNotEmpty ? queryParams.keys.map((e) => 'required final ${queryParams[e].runtimeType} $e,').join('') : ""}}) async {
+Future<ResponseModel> ${lowercaseFirstLetter(className)}(BuildContext? context${queryParams.isNotEmpty ? methodRecieve : ""}) async {
   return $requestModelName(${paramFromPath ? "id" : ""}
   ${queryParams.isNotEmpty ? queryParams.keys.map((e) => '$e,').join('') : ""}).sendApiAction(context, reqType: ReqType.$methodLowerStr)
       .then((rep) {
