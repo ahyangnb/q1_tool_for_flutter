@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:dart_style/dart_style.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:uri/uri.dart';
 
@@ -50,21 +51,6 @@ class _CurlToDartConverterState extends State<CurlToDartConverter> {
     return input[0].toLowerCase() + input.substring(1);
   }
 
-  // String _generateClassName(String baseUrl, String methodLowerStr) {
-  //   Uri uri = Uri.parse(baseUrl);
-  //
-  //   // Define a regular expression pattern to match the desired part
-  //   RegExp regex = RegExp(r'/([^/]+)/([^/]+)/([^/]+)/([^/]+)$');
-  //
-  //   RegExpMatch regExpMatch = regex.firstMatch(uri.path)!;
-  //
-  //   // Use the first capturing group from the matched result
-  //   String extractedPart =
-  //       "${capitalizeFirstLetter(regExpMatch.group(2)!)}${capitalizeFirstLetter(regExpMatch.group(3)!)}";
-  //
-  //   return capitalizeFirstLetter(methodLowerStr) + extractedPart;
-  // }
-
   bool pathContainsParam(String path) {
     RegExp paramPattern = RegExp(
         r'/[a-f\d-]+$'); // Match UUID-like strings at the end of the path
@@ -89,7 +75,7 @@ class _CurlToDartConverterState extends State<CurlToDartConverter> {
     return queryParams;
   }
 
-  void convertToDartCode() {
+  Future convertToDartCode() async {
     final RegExp urlRegex = RegExp(r"'(https?://[^']+)'");
     final RegExp dataRegex = RegExp(r"--data-raw '([^']*)'");
 
@@ -168,14 +154,114 @@ Future<ResponseModel> ${lowercaseFirstLetter(className)}(BuildContext? context${
 }
 ''';
 
+    final classNameOfEntity =
+        "${capitalizeFirstLetter(pathSplit[pathSplit.length - 2])}${capitalizeFirstLetter(pathSplit.last)}Entity";
+
+    final modelString = await tryGetRsp(
+        methodLowerStr, baseUrl, classNameOfEntity, {}, queryParams);
+
     DartFormatter formatter = DartFormatter();
     setState(() {
       try {
-        generatedDartCode = formatter.format(generatedCode);
+        String resultCode = generatedCode + modelString;
+        if (modelString.isNotEmpty) {
+          resultCode = resultCode.replaceAll('return ResponseModel.fromSuccess(rep);',
+              '''
+    $classNameOfEntity entity = $classNameOfEntity.fromJson(rep);
+    return ResponseModel.fromSuccess(entity);''');
+        }
+        generatedDartCode = formatter.format(resultCode);
       } catch (e) {
         generatedDartCode = generatedCode;
       }
     });
+  }
+
+  String generateDartClass(String className, Map<String, dynamic> jsonMap) {
+    StringBuffer buffer = StringBuffer();
+
+    buffer.writeln('class $className {');
+
+    jsonMap.forEach((key, value) {
+      buffer.writeln('  final ${_getType(value)} $key;');
+    });
+
+    buffer.writeln('\n  $className({');
+
+    jsonMap.forEach((key, value) {
+      buffer.writeln('    required this.$key,');
+    });
+
+    buffer.writeln('  });\n');
+
+    buffer
+        .writeln('  factory $className.fromJson(Map<String, dynamic> json) {');
+    buffer.writeln('    return $className(');
+
+    jsonMap.forEach((key, value) {
+      buffer.writeln('      $key: json[\'$key\'],');
+    });
+
+    buffer.writeln('    );');
+    buffer.writeln('  }\n');
+
+    buffer.writeln('  Map<String, dynamic> toJson() {');
+    buffer.writeln('    return {');
+
+    jsonMap.forEach((key, value) {
+      buffer.writeln('      \'$key\': $key,');
+    });
+
+    buffer.writeln('    };');
+    buffer.writeln('  }');
+
+    buffer.writeln('}\n');
+
+    return buffer.toString();
+  }
+
+  String _getType(dynamic value) {
+    if (value is int) {
+      return 'int';
+    } else if (value is double) {
+      return 'double';
+    } else if (value is String) {
+      return 'String';
+    } else if (value is bool) {
+      return 'bool';
+    } else {
+      return 'dynamic';
+    }
+  }
+
+  Future<String> tryGetRsp(
+      String methodLowerStr,
+      String baseUrl,
+      String classNameOfEntity,
+      Map<String, dynamic>? headers,
+      Map<String, dynamic> queryParams) async {
+    try {
+      Dio dio = Dio();
+      Response rsp;
+      dio.options.headers = headers;
+      if (methodLowerStr == "get") {
+        rsp = await dio.get(baseUrl,
+            queryParameters: queryParams, data: queryParams);
+      } else if (methodLowerStr == "post") {
+        rsp = await dio.post(baseUrl, data: queryParams);
+      } else {
+        print("Unknown request type");
+        return "";
+      }
+      print("REQUEST::RESPOSE::${json.encode(rsp.data)}");
+      final data = rsp.data['data'];
+      print("tryGetRsp::$data");
+
+      return generateDartClass(classNameOfEntity, data);
+    } catch (e) {
+      print("tryGetRsp::error:$e");
+      return "";
+    }
   }
 
   @override
