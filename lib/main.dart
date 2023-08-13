@@ -290,7 +290,11 @@ Future<ResponseModel> ${lowercaseFirstLetter(className)}(BuildContext? context${
               SizedBox(height: 16),
               ElevatedButton(
                 onPressed: () {
-                  convertToDartCode();
+                  if (curlCommand.startsWith('curl')) {
+                    convertToDartCode();
+                  } else {
+                    convertToEntity();
+                  }
                 },
                 child: Text('Convert to Dart Code'),
               ),
@@ -313,5 +317,23 @@ Future<ResponseModel> ${lowercaseFirstLetter(className)}(BuildContext? context${
         ),
       ),
     );
+  }
+
+  Future convertToEntity() async {
+    try {
+      final Map<String, dynamic> jsonStrData = json.decode(curlCommand);
+      final modelString = generateDartClass("Root", jsonStrData);
+
+      DartFormatter formatter = DartFormatter();
+      setState(() {
+        try {
+          generatedDartCode = formatter.format(modelString);
+        } catch (e) {
+          generatedDartCode = modelString;
+        }
+      });
+    } catch (e) {
+      generatedDartCode = "错误::${e.toString()}";
+    }
   }
 }
