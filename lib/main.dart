@@ -79,6 +79,20 @@ class _CurlToDartConverterState extends State<CurlToDartConverter> {
     return queryParams;
   }
 
+  String formatStringCenter(String input, String replaceContent) {
+    List<String> words = input.split(replaceContent);
+    String result = '';
+
+    for (String word in words) {
+      if (word.isNotEmpty) {
+        String formattedWord = word[0].toUpperCase() + word.substring(1);
+        result += formattedWord;
+      }
+    }
+
+    return result;
+  }
+
   Future convertToDartCode() async {
     final RegExp urlRegex = RegExp(r"'(https?://[^']+)'");
     final RegExp dataRegex = RegExp(r"--data-raw '([^']*)'");
@@ -117,7 +131,13 @@ class _CurlToDartConverterState extends State<CurlToDartConverter> {
     print('queryParams : $queryParams');
     // print("data::${data.toString()}");
 
-    final String requestModelName = '${className}RequestModel';
+    String requestModelName = '${className}RequestModel';
+    requestModelName = formatStringCenter(requestModelName, "_");
+    requestModelName = formatStringCenter(requestModelName, ".");
+
+    String futureMethodName = lowercaseFirstLetter(className);
+    futureMethodName = formatStringCenter(futureMethodName, "_");
+    futureMethodName = formatStringCenter(futureMethodName, ".");
 
     final methodRecieve =
         ''',{${paramFromPath ? "required final String id," : ""}
@@ -143,7 +163,7 @@ class $requestModelName extends BaseRequest {
   }"""}
 }
 
-Future<ResponseModel> ${lowercaseFirstLetter(className)}(BuildContext? context${queryParams.isNotEmpty ? methodRecieve : ""}) async {
+Future<ResponseModel> $futureMethodName(BuildContext? context${queryParams.isNotEmpty ? methodRecieve : ""}) async {
   return $requestModelName(${paramFromPath ? "id" : ""}
   ${queryParams.isNotEmpty ? queryParams.keys.map((e) => '$e,').join('') : ""}).sendApiAction(context, reqType: ReqType.$methodLowerStr)
       .then((rep) {
